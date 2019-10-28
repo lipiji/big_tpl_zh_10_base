@@ -6,9 +6,10 @@ import re
 PAD, UNK, BOS, EOS = '<pad>', '<unk>', '<bos>', '<eos>'
 BOC, EOC = '<boc>', '<eoc>'
 LS, RS, SP = '<s>', '</s>', ' '
-CS = ['<c-1>'] + ['<c' + str(i) + '>' for i in range(32)]
-SS = ['<s-1>'] + ['<s' + str(i) + '>' for i in range(512)]
-PS = ['<p-1>'] + ['<p' + str(i) + '>' for i in range(512)]
+CS = ['<c-1>'] + ['<c' + str(i) + '>' for i in range(32)] # content
+SS = ['<s-1>'] + ['<s' + str(i) + '>' for i in range(512)] # segnment
+PS = ['<p-1>'] + ['<p' + str(i) + '>' for i in range(512)] # position
+TS = ['<t-1>'] + ['<t' + str(i) + '>' for i in range(32)] # other types
 
 BUFSIZE = 4096000
 
@@ -145,7 +146,7 @@ class DataLoader(object):
 
 class Vocab(object):
     def __init__(self, filename, min_occur_cnt, specials = None):
-        idx2token = [PAD, UNK, BOS, EOS] + [BOC, EOC, LS + RS + SP] + CS + SS + PS \
+        idx2token = [PAD, UNK, BOS, EOS] + [BOC, EOC, LS + RS + SP] + CS + SS + PS + TS \
                     +  (specials if specials is not None else [])
         for line in open(filename, encoding='utf8').readlines():
             try: 
