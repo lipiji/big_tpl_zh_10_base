@@ -93,7 +93,7 @@ def prepare_sample(tokens):
         ys += ws + [RS]
         ys_tpl += masked_ws + [RS]
         ys_seg += [SS[segi] for w in ws] + [RS]
-        ys_pos += [PS[i + 1] for i in range(len(ws))] + [RS]
+        ys_pos += [PS[len(ws) - i] for i in range(len(ws))] + [RS] # inverse order to learn the ending sense
 
     return ys + [EOS], ys_tpl + [EOS], ys_seg + [EOS], ys_pos + [EOS]
 
