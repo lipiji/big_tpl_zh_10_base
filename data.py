@@ -146,7 +146,7 @@ class DataLoader(object):
 
 class Vocab(object):
     def __init__(self, filename, min_occur_cnt, specials = None):
-        idx2token = [PAD, UNK, BOS, EOS] + [BOC, EOC, LS + RS + SP] + CS + SS + PS + TS \
+        idx2token = [PAD, UNK, BOS, EOS] + [BOC, EOC, LS, RS, SP] + CS + SS + PS + TS \
                     +  (specials if specials is not None else [])
         for line in open(filename, encoding='utf8').readlines():
             try: 
