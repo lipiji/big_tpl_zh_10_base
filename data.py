@@ -52,7 +52,7 @@ def batchify(data, vocab):
     ys_tpl = torch.LongTensor(ListsToTensor(ys_tpl, vocab)).t_().contiguous()
     ys_seg = torch.LongTensor(ListsToTensor(ys_seg, vocab)).t_().contiguous()
     ys_pos = torch.LongTensor(ListsToTensor(ys_pos, vocab)).t_().contiguous()
-    msk = torch.LongTensor(ListsToTensor(msk)).t_().contiguous().to(torch.uint8)
+    msk = torch.FloatTensor(ListsToTensor(msk)).t_().contiguous()
     return ys_truth, ys_inp, ys_tpl, ys_seg, ys_pos, msk
 
 def random_mask(tokens, masked_prob=0.8):
@@ -74,7 +74,13 @@ def random_mask(tokens, masked_prob=0.8):
     return masked_tokens, mask
 
 
-def prepare_sample(tokens):
+def parse_line(line, max_len, min_len):
+    tokens = line.split()
+    if len(tokens) < min_len:
+        return None
+    if len(tokens) > max_len:
+        tokens = tokens[:max_len]
+    
     ys = []
     ys_tpl = []
     ys_seg = []
@@ -96,6 +102,13 @@ def prepare_sample(tokens):
         ys_pos += [PS[len(ws) - i] for i in range(len(ws))] + [RS] # inverse order to learn the ending sense
 
     return ys + [EOS], ys_tpl + [EOS], ys_seg + [EOS], ys_pos + [EOS]
+
+def s2xy(lines, vocab, max_len, min_len):
+    data = []
+    for line in lines:
+        res = parse_line(line, max_len, min_len)
+        data.append(res)
+    return  batchify(data, vocab)
 
 def s2t(strs, vocab):
     inp, msk = [], []
@@ -132,11 +145,9 @@ class DataLoader(object):
             line = line.strip()
             if not line:
                 continue
-            tokens = line.split()
-            if len(tokens) < self.min_len:
-                continue
-                
-            data.append(prepare_sample(tokens))
+            res = parse_line(line, self.max_len, self.min_len) 
+            if res:
+                data.append(res)
         random.shuffle(data)
         
         idx = 0

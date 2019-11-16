@@ -59,19 +59,25 @@ class TransformerLayer(nn.Module):
 
         return x, self_attn, external_attn
     
-    def work_incremental(self, x, self_padding_mask, self_attn_mask, incremental_state):
+    def work_incremental(self, x, self_padding_mask = None, self_attn_mask = None,
+                         external_memories = None, external_padding_mask = None, incremental_state = None):
         # x: seq_len x bsz x embed_dim
         residual = x
         x, self_attn = self.self_attn(query=x, key=x, value=x, key_padding_mask=self_padding_mask, attn_mask=self_attn_mask, incremental_state=incremental_state)
         x = self.attn_layer_norm(residual + x)
 
+        if self.with_external:
+            residual = x
+            x, external_attn = self.external_attn(query=x, key=external_memories, value=external_memories, key_padding_mask=external_padding_mask)
+            x = self.external_layer_norm(residual + x)
+        else:
+            external_attn = None
         residual = x
         x = gelu(self.fc1(x))
         x = self.fc2(x)
         x = self.ff_layer_norm(residual + x)
 
-        return x, self_attn, None
-    
+        return x, self_attn, external_attn
 
 class MultiheadAttention(nn.Module):
 
@@ -102,15 +108,13 @@ class MultiheadAttention(nn.Module):
             key_padding_mask: Time x batch
             attn_mask:  tgt_len x src_len
         """
-
         if incremental_state is not None: 
             saved_state = self._get_input_buffer(incremental_state)
             bidx = self._get_bidx(incremental_state)
         else:
             saved_state = None
             bidx = None
-
-
+    
         qkv_same = query.data_ptr() == key.data_ptr() == value.data_ptr()
         kv_same = key.data_ptr() == value.data_ptr()
 
@@ -133,7 +137,7 @@ class MultiheadAttention(nn.Module):
         q = q.contiguous().view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
         k = k.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
         v = v.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
-        
+
         if saved_state is not None:
             # saved states are stored with shape (bsz, num_heads, seq_len, head_dim)
             if 'prev_key' in saved_state:
@@ -150,9 +154,8 @@ class MultiheadAttention(nn.Module):
                 v = torch.cat((prev_value, v), dim=1)
             saved_state['prev_key'] = k.view(bsz, self.num_heads, -1, self.head_dim)
             saved_state['prev_value'] = v.view(bsz, self.num_heads, -1, self.head_dim)
-
             self._set_input_buffer(incremental_state, saved_state)	
-
+        
         src_len = k.size(1)
         # k,v: bsz*heads x src_len x dim
         # q: bsz*heads x tgt_len x dim 
@@ -189,7 +192,6 @@ class MultiheadAttention(nn.Module):
 
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
         attn = self.out_proj(attn)
-
         if need_weights:
             # maximum attention weight over heads 
             attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
@@ -243,7 +245,6 @@ class MultiheadAttention(nn.Module):
             return incremental_state["bidx"]
         else:
             return None
-
 
 def Embedding(num_embeddings, embedding_dim, padding_idx):
     m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)

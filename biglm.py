@@ -83,11 +83,11 @@ class BIGLM(nn.Module):
         
         return probs, pred_y
     
-    def work_incremental(self, inp, incremental_state=None):
-        seq_len, bsz = inp.size()
-        x = self.tok_embed(inp) + self.pos_embed(inp)
+    def work_incremental(self, enc, src_padding_mask, ys_inp, ys_tpl, ys_seg, ys_pos, incremental_state=None):
+        seq_len, bsz = ys_inp.size()
+        x = self.tok_embed(ys_inp) + self.pos_embed(ys_inp) + self.tok_embed(ys_tpl) + self.tok_embed(ys_seg) + self.tok_embed(ys_pos)
         x = self.emb_layer_norm(x)
-        padding_mask = torch.eq(inp, self.vocab.padding_idx)
+        padding_mask = torch.eq(ys_inp, self.vocab.padding_idx)
         if not padding_mask.any():
             padding_mask = None
 
@@ -99,14 +99,18 @@ class BIGLM(nn.Module):
             self_attn_mask = None
 
         for layer in self.layers:
-            x, _ ,_ = layer.work_incremental(x, self_padding_mask=padding_mask, self_attn_mask=self_attn_mask, incremental_state=incremental_state)
+            x, _ ,_ = layer.work_incremental(x, self_padding_mask=padding_mask, \
+                                             self_attn_mask=self_attn_mask, \
+                                             external_memories = enc, \
+                                             external_padding_mask = src_padding_mask, \
+                                             incremental_state = incremental_state)
 
         x = self.one_more_layer_norm(gelu(self.one_more(x)))
         probs = torch.softmax(self.out_proj(x), -1)
 
         _, pred_y = probs.max(-1)
         return probs, pred_y, incremental_state
-    
+ 
     def encode(self, ys_tpl, ys_seg, ys_pos):
         padding_mask = torch.eq(ys_tpl, self.vocab.padding_idx)
         x = self.tok_embed(ys_tpl) + self.tok_embed(ys_seg) + self.tok_embed(ys_pos)
