@@ -73,6 +73,46 @@ def random_mask(tokens, masked_prob=0.8):
             mask.append(0)
     return masked_tokens, mask
 
+def parse_line_4paper(line, max_len, min_len):
+    _, line = line.split("<s2>")
+    sents = line.split("</s>")
+    tokens = []
+    for sent in sents:
+        if not sent:
+            continue
+        tokens += [w for w in sent] + [RS]
+    if len(tokens) > max_len:
+        tokens = tokens[:max_len]
+    sents = ''.join(tokens).split("</s>")
+
+    ys = []
+    ys_tpl = []
+    ys_seg = []
+    ys_pos = []
+
+    segi = 0
+    for sent in sents:
+        if not sent:
+            continue
+        segi += 1
+        
+        ws = [w for w in sent]
+        masked_ws, msk = random_mask(ws, 0.8)
+        
+        ys += ws + [RS]
+        ys_tpl += masked_ws + [RS]
+        ys_seg += [SS[segi] for w in ws] + [RS]
+        ys_pos += [PS[len(ws) - i] for i in range(len(ws))] + [RS] # inverse order to learn the ending sense
+
+    return ys + [EOS], ys_tpl + [EOS], ys_seg + [EOS], ys_pos + [EOS]
+
+def s2xy_4paper(lines, vocab, max_len, min_len):
+    data = []
+    for line in lines:
+        res = parse_line_4paper(line, max_len, min_len)
+        data.append(res)
+    return  batchify(data, vocab)
+
 
 def parse_line(line, max_len, min_len):
     tokens = line.split()

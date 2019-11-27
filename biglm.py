@@ -62,7 +62,8 @@ class BIGLM(nn.Module):
         else:
             cost = torch.sum(cost * y_mask, 0)
         cost = cost.view((y.size(1), -1))
-        return torch.mean(cost) 
+        ppl = 2 ** cost
+        return cost.sum().item(), ppl.sum().item()
 
     def work(self, inp):
         seq_len, bsz = inp.size()
@@ -117,6 +118,28 @@ class BIGLM(nn.Module):
         x = self.emb_layer_norm(x)
         return x, padding_mask
     
+    def ppl(self, ys_truth, ys_inp, ys_tpl, ys_seg, ys_pos, msk):
+        enc, src_padding_mask = self.encode(ys_tpl, ys_seg, ys_pos)
+        seq_len, bsz = ys_inp.size()
+        self_attn_mask = self.attn_mask(seq_len)
+        x = self.tok_embed(ys_inp) + self.pos_embed(ys_inp) \
+          + self.tok_embed(ys_tpl) + self.tok_embed(ys_seg) + self.tok_embed(ys_pos)
+        x = self.emb_layer_norm(x)
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        padding_mask = torch.eq(ys_truth, self.vocab.padding_idx)
+        if not padding_mask.any():
+            padding_mask = None
+        for layer in self.layers:
+            x, _ ,_ = layer(x, self_padding_mask=padding_mask,\
+                               self_attn_mask = self_attn_mask, \
+                               external_memories = enc, \
+                               external_padding_mask = src_padding_mask)
+
+        x = self.one_more_layer_norm(gelu(self.one_more(x)))
+        pred = torch.softmax(self.out_proj(x), -1)
+        nll, ppl = self.nll_loss(pred, ys_truth, msk)
+        return nll, ppl, bsz
+        
     def forward(self, ys_truth, ys_inp, ys_tpl, ys_seg, ys_pos, msk):
         enc, src_padding_mask = self.encode(ys_tpl, ys_seg, ys_pos)
         seq_len, bsz = ys_inp.size()
